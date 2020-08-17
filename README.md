@@ -154,7 +154,7 @@ to inject also needs to be signed using the same identity as the app you are inj
 codesigning identity to use for a particular project use something like the following from the command line:
 
 ```
-$ defaults write com.johnholdsworth.InjectionIII '/full/path/to/project/file.xcodeproj' CEE8F2FCE31A71EE5207F70F87D184C826844DC0
+$ defaults write com.johnholdsworth.InjectionIII '/full/path/to/project/file.xcodeproj' BFA2172E01C63F5A1B3DBE929B5B775E276923EE
 ```
 ... replacing `CEE8F2FCE31A71EE5207F70F87D184C826844DC0` with the identity used to sign the
 app which you can extract from the -sign argument in the `Sign` step in the Xcode build logs.

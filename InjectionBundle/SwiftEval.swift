@@ -192,7 +192,7 @@ public class SwiftEval: NSObject {
                 self.projectFile
                     .flatMap({ logsDir(project: URL(fileURLWithPath: $0), derivedData: derivedData) })
                     .flatMap({ (URL(fileURLWithPath: self.projectFile!), $0) }) ??
-                findProject(for: sourceURL, derivedData: derivedData) else {
+                findProject(for: sourceURL, derivedData: derivedData, recursive:  true) else {
                     throw evalError("""
                         Could not locate containing project or it's logs.
                         For a macOS app you need to turn off the App Sandbox.
@@ -291,7 +291,7 @@ public class SwiftEval: NSObject {
 
     let detectFilepaths = try! NSRegularExpression(pattern: "(/(?:[^\\ ]*\\\\.)*[^\\ ]*) ")
 
-    @objc public func rebuildClass(oldClass: AnyClass?, classNameOrFile: String, extra: String?) throws -> String {
+    @objc public func rebuildClass(oldClass: AnyClass?, classNameOrFile: String, extra: String?) throws -> String {   
         let (projectFile, logsDir) = try determineEnvironment(classNameOrFile: classNameOrFile)
 
         // locate compile command for class
@@ -367,7 +367,7 @@ public class SwiftEval: NSObject {
 
         let projectDir = projectFile.deletingLastPathComponent().path
 
-        _ = evalError("Compiling \(sourceFile)")
+        _ = evalError("Compiling \(classNameOrFile) \(sourceFile)")
 
         guard shell(command: """
                 (cd "\(projectDir.escaping("$"))" && \(compileCommand) -o \(tmpfile).o >\(logfile) 2>&1)
@@ -476,7 +476,7 @@ public class SwiftEval: NSObject {
     func extractClasSymbols(tmpfile: String) throws -> [String] {
 
         guard shell(command: """
-            \(xcodeDev)/Toolchains/XcodeDefault.xctoolchain/usr/bin/nm \(tmpfile).o | grep -E ' S _OBJC_CLASS_\\$_| _(_T0|\\$S|\\$s).*CN$' | awk '{print $3}' >\(tmpfile).classes
+            \(xcodeDev)/Toolchains/XcodeDefault.xctoolchain/usr/bin/nm \(tmpfile).o | grep -E ' (S|D) _OBJC_CLASS_\\$_| _(_T0|\\$S|\\$s).*CN$' | awk '{print $3}' >\(tmpfile).classes
             """) else {
             throw evalError("Could not list class symbols")
         }
@@ -657,19 +657,25 @@ public class SwiftEval: NSObject {
         return findDerivedData(url: url.deletingLastPathComponent(), ideProcPath: ideProcPath)
     }
 
-    func findProject(for source: URL, derivedData: URL) -> (projectFile: URL, logsDir: URL)? {
+    func findProject(for source: URL, derivedData: URL, recursive: Bool) -> (projectFile: URL, logsDir: URL)? {
         let dir = source.deletingLastPathComponent()
         if dir.path == "/" {
             return nil
         }
 
-        var candidate = findProject(for: dir, derivedData: derivedData)
-
-        if let files = try? FileManager.default.contentsOfDirectory(atPath: dir.path),
-            let project = file(withExt: "xcworkspace", in: files) ?? file(withExt: "xcodeproj", in: files),
+        var candidate = findProject(for: dir, derivedData: derivedData, recursive: recursive)
+        
+        if let files = try? FileManager.default.contentsOfDirectory(atPath: dir.path) {
+            if let project = try? file(withExt: "xcworkspace", in: files) ?? file(withExt: "xcodeproj", in: files),
             let logsDir = logsDir(project: dir.appendingPathComponent(project), derivedData: derivedData),
             mtime(logsDir) > candidate.flatMap({ mtime($0.logsDir) }) ?? 0 {
                 candidate = (dir.appendingPathComponent(project), logsDir)
+            } else if recursive {
+                // 适配Pod工程： 暂时写死  Example/tmp tmp只是为了省事。。。 findProject默认去掉最后的路径
+                if files.contains("Example") {
+                    return findProject(for: dir.appendingPathComponent("Example/tmp", isDirectory: true), derivedData: derivedData, recursive: false)
+                }
+            }
         }
 
         return candidate
